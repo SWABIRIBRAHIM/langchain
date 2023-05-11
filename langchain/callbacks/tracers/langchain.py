@@ -19,6 +19,7 @@ from langchain.callbacks.tracers.schemas import (
     TracerSessionV2,
     TracerSessionV2Create,
 )
+from langchain.schema import BaseMessage
 from langchain.utils import raise_for_status_with_text
 
 
@@ -201,7 +202,14 @@ class LangChainTracerV2(LangChainTracer):
         child_runs: List[Union[LLMRun, ChainRun, ToolRun]] = []
         if isinstance(run, LLMRun):
             run_type = "llm"
-            inputs = {"prompts": run.prompts}
+            if run.extra is not None and "messages" in run.extra:
+                messages: List[List[BaseMessage]] = run.extra.pop("messages")
+                converted_messages = [
+                    [{**m.dict(), "_type": m.type} for m in batch] for batch in messages
+                ]
+                inputs = {"messages": converted_messages}
+            else:
+                inputs = {"prompts": run.prompts}
             outputs = run.response.dict() if run.response else {}
             child_runs = []
         elif isinstance(run, ChainRun):

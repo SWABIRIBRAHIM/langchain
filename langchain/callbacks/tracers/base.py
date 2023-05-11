@@ -16,7 +16,7 @@ from langchain.callbacks.tracers.schemas import (
     TracerSessionCreate,
     TracerSessionV2,
 )
-from langchain.schema import LLMResult
+from langchain.schema import BaseMessage, LLMResult, get_buffer_string
 
 
 class TracerException(Exception):
@@ -188,6 +188,38 @@ class BaseTracer(BaseCallbackHandler, ABC):
         llm_run.error = repr(error)
         llm_run.end_time = datetime.utcnow()
         self._end_trace(llm_run)
+
+    def on_chat_model_start(
+        self,
+        serialized: Dict[str, Any],
+        messages: List[List[BaseMessage]],
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Start a trace for an LLM run."""
+        if self.session is None:
+            self.session = self.load_default_session()
+
+        run_id_ = str(run_id)
+        parent_run_id_ = str(parent_run_id) if parent_run_id else None
+
+        execution_order = self._get_execution_order(parent_run_id_)
+        # Duplicate information until we break compatibility with the old API
+        prompts = [get_buffer_string(batch) for batch in messages]
+        llm_run = LLMRun(
+            uuid=run_id_,
+            parent_uuid=parent_run_id_,
+            serialized=serialized,
+            prompts=prompts,
+            extra={**kwargs, "messages": messages},
+            start_time=datetime.utcnow(),
+            execution_order=execution_order,
+            child_execution_order=execution_order,
+            session_id=self.session.id,
+        )
+        self._start_trace(llm_run)
 
     def on_chain_start(
         self,
